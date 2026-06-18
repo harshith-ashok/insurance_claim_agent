@@ -1,0 +1,6 @@
+pymupdf4llm
+langchain-text-splitters
+qdrant-client
+sentence-transformers
+ollama
+tqdm
