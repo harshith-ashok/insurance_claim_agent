@@ -1,131 +1,133 @@
-import time
 import ollama
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
-# --- 1. CONFIGURATION & INITIALIZATION ---
-COLLECTION_NAME = "insurance_policies"
-DENSE_MODEL_NAME = "BAAI/bge-small-en-v1.5"
-RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+from config import (
+    COLLECTION_NAME,
+    DENSE_MODEL_NAME,
+    LLM_MODEL_NAME,
+    QDRANT_URL,
+    RERANKER_MODEL_NAME,
+)
 
-client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient(url=QDRANT_URL)
 dense_model = SentenceTransformer(DENSE_MODEL_NAME)
 reranker = CrossEncoder(RERANKER_MODEL_NAME)
 
-def execution_pipeline(query: str, target_section: str = None):
-    start_time = time.time()
+SYSTEM_PROMPT = (
+    "You are an insurance system auditor. Provide highly precise answers derived ONLY from the provided text context.\n"
+    "Rules:\n"
+    "1. Every single assertion must include an inline location token explicitly showing page numbers and sections, matching this exact format: (Page X, Section Y).\n"
+    "2. If the context does not explicitly contain the details needed to form a direct answer, state exactly: "
+    "'This information is not available in the provided policy documents.' Do not extrapolate.\n"
+    "3. Explicitly enumerate all benefits, requirements, or exclusions mentioned in the context without truncation."
+)
 
-    # --- 2. VECTOR GENERATION ---
-    query_dense = dense_model.encode(query).tolist()
 
-    # Construct an optional semantic metadata pre-filter
-    query_filter = None
+def _build_filter(target_section: str = None, target_source: str = None):
+    conditions = []
     if target_section:
-        query_filter = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="metadata.section",
-                    match=models.MatchValue(value=target_section)
-                )
-            ]
-        )
-
-    # --- 3. NATIVE HYBRID RRF SEARCH VIA QDRANT ---
-    # Query dense & sparse spaces concurrently; fuse ranks internally via RRF
-    retrieval_response = client.query_points(
-        collection_name=COLLECTION_NAME,
-        prefetch=[
-            models.Prefetch(
-                query=query_dense,
-                using="dense",
-                limit=15
-            ),
-            models.Prefetch(
-                query=models.Document(text=query, model="Qdrant/bm25"),
-                using="sparse",
-                limit=15
+        conditions.append(
+            models.FieldCondition(
+                key="metadata.section", match=models.MatchValue(value=str(target_section))
             )
-        ],
-        query=models.RrfQuery(rrf=models.Rrf()),
-        query_filter=query_filter,
-        limit=5
-    )
+        )
+    if target_source:
+        conditions.append(
+            models.FieldCondition(
+                key="metadata.source", match=models.MatchValue(value=str(target_source))
+            )
+        )
+    return models.Filter(must=conditions) if conditions else None
 
-    candidates = [
-        {
-            "text": point.payload["text"],
-            "score": point.score,
-            "meta": point.payload["metadata"]
-        }
-        for point in retrieval_response.points
-    ]
 
-    retrieval_latency = time.time() - start_time
-
-    if not candidates:
-        print("No matching documentation layers found.")
+def diagnostic_pipeline(query: str, target_section: str = None, target_source: str = None):
+    if not client.collection_exists(COLLECTION_NAME):
+        print(
+            f"[ERROR] Collection '{COLLECTION_NAME}' does not exist. Run ingest.py first."
+        )
         return
 
-    # --- 4. CONDITIONAL RERANKING GATEWAY ---
-    # Qdrant's raw RRF score distribution scales relative to rank configurations.
-    # For high confidence gating, we test our highest candidate rank score.
-    # If the top candidate's relative RRF distribution score is weak, invoke the Cross-Encoder.
-    top_initial_score = candidates[0]["score"]
-    rerank_triggered = False
+    query_dense = dense_model.encode(query).tolist()
+    query_filter = _build_filter(target_section, target_source)
 
-    if top_initial_score < 0.032:  # Adjusted threshold index relative to RRF score formulas
-        rerank_triggered = True
-        pairs = [[query, c["text"]] for c in candidates]
-        rerank_scores = reranker.predict(pairs)
+    try:
+        retrieval_response = client.query_points(
+            collection_name=COLLECTION_NAME,
+            prefetch=[
+                models.Prefetch(query=query_dense, using="dense", limit=30),
+                models.Prefetch(
+                    query=models.Document(text=query, model="Qdrant/bm25"),
+                    using="sparse",
+                    limit=30,
+                ),
+            ],
+            query=models.RrfQuery(rrf=models.Rrf()),
+            query_filter=query_filter,
+            limit=15,
+        )
+    except Exception as exc:
+        print(f"[ERROR] Qdrant query failed: {exc}")
+        return
 
-        for idx, score in enumerate(rerank_scores):
-            candidates[idx]["rerank_score"] = float(score)
+    seen_chunks = set()
+    candidates = []
+    for point in retrieval_response.points:
+        cid = point.payload["metadata"]["chunk_id"]
+        if cid in seen_chunks:
+            continue
+        seen_chunks.add(cid)
+        candidates.append(
+            {"text": point.payload["text"], "rrf_score": point.score, "meta": point.payload["metadata"]}
+        )
 
-        # Re-sort using cross-encoder scores
-        candidates = sorted(candidates, key=lambda x: x["rerank_score"], reverse=True)
+    if not candidates:
+        print(f"\n[DIAGNOSTICS] No matches found for query: '{query}'")
+        return
 
-    rerank_latency = (time.time() - start_time) - retrieval_latency
+    pairs = [[query, c["text"]] for c in candidates]
+    rerank_scores = reranker.predict(pairs)
+    for candidate, score in zip(candidates, rerank_scores):
+        candidate["cross_score"] = float(score)
 
-    # --- 5. CONTEXT ARCHITECTURE ASSEMBLE ---
-    context_blocks = []
-    for c in candidates[:3]: # Extract top 3 candidates for final processing
-        section_info = f"[Section: {c['meta'].get('section', 'N/A')}]"
-        context_blocks.append(f"{section_info}\nContent: {c['text']}")
+    sorted_candidates = sorted(candidates, key=lambda x: x["cross_score"], reverse=True)
 
-    context_str = "\n\n---\n\n".join(context_blocks)
+    print("\n" + "=" * 80)
+    print(f" RETRIEVAL DIAGNOSTICS FOR QUERY: '{query}'")
+    print("=" * 80)
+    for rank, c in enumerate(sorted_candidates[:4]):
+        print(
+            f"Rank {rank + 1} | Source: {c['meta']['source']} | Page: {c['meta']['page']} | "
+            f"Chunk: {c['meta']['chunk_id']} | Section: {c['meta']['section']}"
+        )
+        print(
+            f"       Scores -> Internal RRF Distribution: {c['rrf_score']:.5f} | Cross-Encoder Logit: {c['cross_score']:.4f}"
+        )
+        print(f"       Snippet preview: {c['text'][:110].strip()}...")
+        print("-" * 50)
 
-    # --- 6. LLM ORCHESTRATION WITH STREAMING ---
-    system_prompt = (
-        "You are an insurance policy assistant. You answer queries ONLY from the provided context.\n\n"
-        "Rules:\n"
-        "1. Every single claim must cite its structural source explicitly inline using the exact [Section X] tag format provided in the context context.\n"
-        "2. If the answer is not explicitly contained within the context text, respond exactly with: "
-        "\"This information is not available in the provided policy documents.\"\n"
-        "3. Never infer, extrapolate, or utilize external knowledge weights.\n"
-        "4. Keep answers concise, factual, and strictly literal."
+    context_str = "\n\n".join(
+        f"[Location -> Source: {c['meta']['source']}, Page: {c['meta']['page']}, Section: {c['meta']['section']}]\n{c['text']}"
+        for c in sorted_candidates[:4]
     )
 
-    user_prompt = f"Context:\n{context_str}\n\nQuery: {query}"
+    print("\n" + "=" * 40)
+    print(" STREAMED ENGINE RESPONSE")
+    print("=" * 40 + "\n")
 
-    print("\n" + "="*40)
-    print(f"METRICS: Retrieval Latency: {retrieval_latency:.4f}s | Rerank Triggered: {rerank_triggered} ({rerank_latency:.4f}s)")
-    print("="*40 + "\n")
+    try:
+        stream = ollama.chat(
+            model=LLM_MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Context:\n{context_str}\n\nQuery: {query}"},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            print(chunk["message"]["content"], end="", flush=True)
+    except Exception as exc:
+        print(f"[ERROR] LLM inference failed: {exc}")
+        return
 
-    stream = ollama.chat(
-        model="qwen3:8b",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        stream=True
-    )
-
-    for chunk in stream:
-        print(chunk['message']['content'], end='', flush=True)
-    print("\n")
-
-# --- TEST PIPELINE EXECUTION ---
-if __name__ == "__main__":
-    # Test sample query execution
-    user_query = "What if it's an accidental drug overdose?"
-    execution_pipeline(query=user_query)
+    print("\n\n" + "=" * 80 + "\n")

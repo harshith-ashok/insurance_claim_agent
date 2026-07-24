@@ -185,23 +185,23 @@ insurance-rag/
 
 ### Prerequisites
 
-- [Ollama](https://ollama.com) installed and running
+- [Ollama](https://ollama.com) installed, running, and signed in (`ollama signin`) — inference uses a cloud-hosted Ollama model, not a local one
 - Docker (for Qdrant)
-- Python 3.11+
+- Python 3.12 ([uv](https://docs.astral.sh/uv/) is used to manage the virtualenv, see `.venv/pyvenv.cfg`)
 
 ### Install
 
 ```bash
-git clone https://github.com/harshith-ashok/insurance-rag
-cd insurance-rag
-pip install -r requirements.txt
+uv venv
+uv pip install -r requirements.txt
 ```
 
-### Pull required models
+### Pull the required model
+
+Embeddings and reranking run locally via `sentence-transformers` (downloaded automatically on first run: `BAAI/bge-small-en-v1.5` and `cross-encoder/ms-marco-MiniLM-L-6-v2`). The only Ollama model needed is the cloud LLM used for generation:
 
 ```bash
-ollama pull mistral:7b
-ollama pull bge-m3
+ollama pull gpt-oss:120b-cloud
 ```
 
 ### Start Qdrant
@@ -210,25 +210,30 @@ ollama pull bge-m3
 docker run -d -p 6333:6333 -v $(pwd)/qdrant_storage:/qdrant/storage qdrant/qdrant
 ```
 
-### Ingest a document
+### Ingest documents
+
+Drop policy PDFs into `docs/` (car and life policies are included), then run:
 
 ```bash
-python -m ingestion.parser --input policy.pdf
-python -m ingestion.chunker
-python -m ingestion.embedder
+python ingest.py
 ```
 
-### Run the API
+This wipes and rebuilds the `insurance_policies` Qdrant collection from every PDF in `docs/`. Pass `--docs-dir <path>` to ingest from a different folder.
+
+### Query
 
 ```bash
-uvicorn api.main:app --reload
+python test.py
 ```
 
-### Run evaluation
+runs a fixed set of example queries. To ask a single question interactively:
 
-```bash
-python eval/run_eval.py
+```python
+from query import diagnostic_pipeline
+diagnostic_pipeline(query="What are the key benefits of the policy?", target_source="icici-car.pdf")
 ```
+
+`target_section` and `target_source` are both optional filters (by clause/section label and by source PDF filename, respectively).
 
 ---
 
