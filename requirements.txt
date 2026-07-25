@@ -4,3 +4,19 @@ qdrant-client
 sentence-transformers
 ollama
 tqdm
+
+# eval/ suite (Phase 1 — see refactor.md)
+pytest
+
+# RAGAS metrics (eval/test_ragas.py) are optional — skipped automatically if this
+# block isn't installed. ragas 0.4.3's latest-langchain pins are broken as of this
+# writing (langchain-community>=0.4 dropped the vertexai chat module ragas 0.4.3
+# still imports, and langchain-openai>=1.0 needs a langchain-core ragas doesn't
+# support yet). These exact versions are the known-working combination against a
+# local Ollama endpoint; `uv pip install ragas` alone will NOT work.
+ragas==0.4.3
+langchain-community==0.3.27
+langchain-openai==0.3.28
+
+# Optional, NOT installed by default: `langfuse` — enables the tracing hook in
+# query.py's run_query() (see eval/README.md). No-op without it.
