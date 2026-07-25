@@ -73,6 +73,7 @@ Fixed 512-token chunks split insurance clauses at arbitrary boundaries, severing
 ### Why Qdrant over FAISS?
 
 FAISS is in-memory and stateless — every process restart reloads the index from scratch. Qdrant provides:
+
 - Persistent disk storage across restarts
 - Native hybrid vector support (dense + sparse in a single collection)
 - Payload-based pre-filtering before semantic search
@@ -125,7 +126,7 @@ The absolute failure phrase in Rule 2 is load-bearing — it gives the model an 
 
 ## Known Failure Modes
 
-This system does not claim zero hallucination. It claims zero *creative* hallucination. Structural failure modes remain:
+This system does not claim zero hallucination. It claims zero _creative_ hallucination. Structural failure modes remain:
 
 **1. Cross-document synthesis beyond the retrieval window**
 When a complete answer requires combining clauses from three or more sections that collectively exceed the context window, the model receives an incomplete picture and either partially answers or abstains. Mitigation: increase retrieval top-k selectively for complex queries detected by query classification.
@@ -142,14 +143,14 @@ The most insidious failure mode: if the correct chunk is not retrieved — becau
 
 The system is evaluated against a hand-crafted dataset of 40 question-answer pairs derived from real insurance policy documents.
 
-| Metric | Value |
-|---|---|
-| Retrieval Precision@3 | — |
-| Answer Faithfulness (RAGAS) | — |
-| Answer Relevance (RAGAS) | — |
-| Latency p50 (end-to-end) | — |
-| Latency p95 (end-to-end) | — |
-| Abstention Rate (no-answer queries) | — |
+| Metric                              | Value |
+| ----------------------------------- | ----- |
+| Retrieval Precision@3               | —     |
+| Answer Faithfulness (RAGAS)         | —     |
+| Answer Relevance (RAGAS)            | —     |
+| Latency p50 (end-to-end)            | —     |
+| Latency p95 (end-to-end)            | —     |
+| Abstention Rate (no-answer queries) | —     |
 
 > Benchmarks are populated after evaluation harness run. See `eval/run_eval.py`.
 
@@ -241,14 +242,14 @@ diagnostic_pipeline(query="What are the key benefits of the policy?", target_sou
 
 End-to-end latency breakdown on Apple M3 Pro (local inference):
 
-| Stage | Typical Latency |
-|---|---|
-| Embedding (query) | ~80ms |
-| Hybrid retrieval + RRF | ~120ms |
-| Cross-Encoder reranking | ~300ms (conditional) |
-| LLM inference (streaming) | ~3–4s (first token: ~800ms) |
-| **Total (reranker triggered)** | **~4.5s** |
-| **Total (reranker skipped)** | **~4.1s** |
+| Stage                          | Typical Latency             |
+| ------------------------------ | --------------------------- |
+| Embedding (query)              | ~80ms                       |
+| Hybrid retrieval + RRF         | ~120ms                      |
+| Cross-Encoder reranking        | ~300ms (conditional)        |
+| LLM inference (streaming)      | ~3–4s (first token: ~800ms) |
+| **Total (reranker triggered)** | **~4.5s**                   |
+| **Total (reranker skipped)**   | **~4.1s**                   |
 
 Streaming output means the user sees the first token in under 1 second regardless of total generation time.
 
@@ -256,17 +257,17 @@ Streaming output means the user sees the first token in under 1 second regardles
 
 ## Tech Stack
 
-| Layer | Technology | Reason |
-|---|---|---|
-| Document parsing | pymupdf4llm | Structure-preserving, table-aware |
-| Chunking | LangChain MarkdownHeaderTextSplitter | Clause-boundary aware |
-| Embeddings | bge-m3 via Ollama | Hybrid dense+sparse, local |
-| Vector store | Qdrant | Persistent, filterable, Docker-native |
-| Retrieval fusion | Reciprocal Rank Fusion | Score-scale independent |
-| Reranking | ms-marco-MiniLM-L-6-v2 | Fast cross-encoder, conditional |
-| Inference | Mistral:7b via Ollama | Local, 3–4s latency, citation-compliant |
-| Evaluation | RAGAS | Automated faithfulness + relevance scoring |
-| API | FastAPI | Async, streaming response support |
+| Layer            | Technology                           | Reason                                     |
+| ---------------- | ------------------------------------ | ------------------------------------------ |
+| Document parsing | pymupdf4llm                          | Structure-preserving, table-aware          |
+| Chunking         | LangChain MarkdownHeaderTextSplitter | Clause-boundary aware                      |
+| Embeddings       | bge-m3 via Ollama                    | Hybrid dense+sparse, local                 |
+| Vector store     | Qdrant                               | Persistent, filterable, Docker-native      |
+| Retrieval fusion | Reciprocal Rank Fusion               | Score-scale independent                    |
+| Reranking        | ms-marco-MiniLM-L-6-v2               | Fast cross-encoder, conditional            |
+| Inference        | Mistral:7b via Ollama                | Local, 3–4s latency, citation-compliant    |
+| Evaluation       | RAGAS                                | Automated faithfulness + relevance scoring |
+| API              | FastAPI                              | Async, streaming response support          |
 
 ---
 
