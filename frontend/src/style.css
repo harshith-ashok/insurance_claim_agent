@@ -1,0 +1,53 @@
+:root {
+  --bg: #0a0c10;
+  --panel: #12151b;
+  --panel-2: #171b22;
+  --border: #242a33;
+  --border-soft: #1b2029;
+  --text: #e8eaed;
+  --dim: #8a9099;
+  --dim-2: #565c66;
+  --accent: #5b8cff;
+  --accent-dim: rgba(91, 140, 255, 0.12);
+  --ok: #37c978;
+  --warn: #e8a33d;
+  --danger: #f0665c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 13.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
+
+h1,
+h2,
+h3,
+.disp {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+.mono {
+  font-family: "JetBrains Mono", monospace;
+}

@@ -7,6 +7,24 @@ DENSE_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 LLM_MODEL_NAME = "gpt-oss:120b-cloud"
 
+# Chunking (ingestion/parsing.py) — sliding-window RecursiveCharacterTextSplitter.
+CHUNK_SIZE = 1500
+CHUNK_OVERLAP = 300
+
+# Retrieval (retrieval/search.py). PREFETCH_LIMIT is the candidate pool pulled
+# per vector type (dense, sparse) before RRF fusion; RRF_LIMIT is how many
+# fused candidates go to the reranker; TOP_K_CONTEXT is how many reranked
+# chunks are actually sent to the LLM as context.
+PREFETCH_LIMIT = 30
+RRF_LIMIT = 15
+TOP_K_CONTEXT = 4
+
+# Near-duplicate suppression: chunks whose text similarity (difflib ratio) to
+# an already-kept, higher-ranked candidate meets or exceeds this are dropped
+# before taking TOP_K_CONTEXT — prevents a repeated boilerplate/table chunk
+# from occupying multiple context slots (see refactor.md Phase 2).
+DEDUP_SIMILARITY_THRESHOLD = 0.9
+
 # Minimum top-1 cross-encoder score required to call the LLM at all. Below this,
 # run_query() abstains deterministically instead of relying on prompt compliance.
 # None disables the gate. Left disabled: eval/gate_analysis.py found answerable and

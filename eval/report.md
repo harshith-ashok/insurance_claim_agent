@@ -13,21 +13,21 @@ Ground truth chunk = (source, page) match. k = 4.
 | **overall** | 40 | 88.8% | 33.1% | 0.840 |
 
 ## Citation accuracy & verification
-- Citation accuracy (cited page vs. expected page), n=40: precision 74.4%, recall 82.5%
-- Citation **verification** (claim text re-embedded and checked against the specific cited chunk, similarity ≥ 0.35): 59/68 citations verified (86.8%)
+- Citation accuracy (cited page vs. expected page), n=40: precision 69.4%, recall 76.2%
+- Citation **verification** (claim text re-embedded and checked against the specific cited chunk, similarity ≥ 0.35): 68/76 citations verified (89.5%)
 
 ## Abstention confusion matrix
 | Bucket | correctly_answered | correctly_abstained | hallucinated | wrongly_refused |
 |---|---|---|---|---|
-| answerable | 31 | 0 | 0 | 1 |
+| answerable | 30 | 0 | 0 | 2 |
 | unanswerable | 0 | 11 | 0 | 0 |
 | ambiguous | 7 | 1 | 1 | 1 |
-| **overall** | 38 | 12 | **1** | 2 |
+| **overall** | 37 | 12 | **1** | 3 |
 
 `hallucinated` = answered when the golden set expected a refusal (false positive / made-up grounding). `wrongly_refused` = abstained when the question was answerable from the docs.
 
 ## Consistency (repeated-run stability)
-n=5 sampled questions × 5 runs each. Mean pairwise answer-embedding similarity: 0.963. Mean citation-set agreement rate: 100.0%.
+n=5 sampled questions × 5 runs each. Mean pairwise answer-embedding similarity: 0.939. Mean citation-set agreement rate: 72.0%.
 
 ## Confidence gate analysis
 Simulates `config.CONFIDENCE_THRESHOLD` at candidate values against the recorded pipeline run (no LLM re-calls — see `eval/gate_analysis.py`).

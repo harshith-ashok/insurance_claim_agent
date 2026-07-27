@@ -4,6 +4,11 @@ qdrant-client
 sentence-transformers
 ollama
 tqdm
+pydantic
+
+# api/ — FastAPI service (Phase 4, pulled forward for the frontend/ integration)
+fastapi
+uvicorn[standard]
 
 # eval/ suite (Phase 1 — see refactor.md)
 pytest

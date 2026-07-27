@@ -26,7 +26,7 @@ on this whole list.
 - [ ] Remove or clearly mark the metrics table so it doesn't show unpopulated `—` rows next to claimed capabilities — either delete it until Phase 1 produces real numbers, or label it "target metrics, not yet measured"
 - [ ] Add a one-paragraph "Current State vs. Roadmap" framing at the top of the README — this framing itself is a seniority signal (knowing the gap between what you built and what you'd build next is more impressive than hiding it)
 
-## Phase 1 — Evaluation framework (P0, the core technical differentiator)
+## Phase 1 — Evaluation framework (P0, the core technical differentiator) — ✅ DONE
 
 This is the single highest-leverage phase. Right now there is no measurement
 of accuracy, consistency, or abstention — `test.py` only prints output for a
@@ -34,45 +34,45 @@ human to eyeball. "I built a RAG system" is a common resume line; "I measured
 faithfulness/precision/citation-accuracy against a hand-labeled set and
 iterated on the numbers" is the line that differentiates.
 
-- [ ] Build a golden evaluation dataset (`eval/golden_set.jsonl`) with three buckets, each entry carrying `question`, `expected_answer`, `expected_citations` (page/section/source), and `bucket`:
-  - [ ] **Answerable** — questions with a verifiable answer in the PDFs (pull ~15-20 per document from real clauses)
-  - [ ] **Unanswerable** — questions plausible for an insurance policy but not covered by these specific documents (tests false-positive/hallucination risk)
-  - [ ] **Ambiguous / multi-hop / adversarial** — cross-section reasoning, long-tail clause language, near-duplicate-chunk traps
-- [ ] Write an `eval/` package with a real test runner (pytest) that loads the golden set and calls the pipeline programmatically — no more manual script + eyeballing
-- [ ] Implement retrieval metrics: Recall@k, Precision@k, MRR — did the ground-truth chunk make it into the top-4 context at all
-- [ ] Implement citation accuracy: parse `(Page X, Section Y)` tokens out of the generated answer and diff against expected citations
-- [ ] Implement a citation *verification* pass, not just citation *presence* — see Phase 2's guardrail-layer task; a model can cite a plausible-sounding page/section that doesn't actually support the claim, and naive citation-format checking won't catch that
-- [ ] Implement an abstention confusion matrix — for each bucket, classify each run as: correctly answered / correctly abstained / hallucinated (answered when it shouldn't have) / wrongly refused (abstained when answerable)
-- [ ] Wire in RAGAS for `context_precision`, `context_recall`, `faithfulness`, `answer_relevance` — with actual populated values, replacing the current unpopulated README table
-- [ ] Implement a consistency test — run each golden question N times (e.g. N=5) and measure answer/citation stability (embedding similarity across runs, citation agreement rate)
-- [ ] Add tracing via Langfuse or Arize Phoenix so each eval run is inspectable per-query — this is what turns "it works" into "I can diagnose why a specific answer was wrong: retrieval miss vs. reranking miss vs. generation hallucination"
-- [ ] Generate a results report (`eval/report.md` or a small HTML/artifact) with real numbers — this becomes the README metrics table and the resume evidence
-- [ ] Add a retrieval-confidence gate: if the top reranked cross-encoder score is below a tuned threshold, skip the LLM call and return "not available" deterministically instead of relying solely on prompt compliance — then measure how much this improves the abstention confusion matrix
+- [x] Build a golden evaluation dataset (`eval/golden_set.jsonl`) with three buckets, each entry carrying `question`, `expected_answer`, `expected_citations` (page/section/source), and `bucket`:
+  - [x] **Answerable** — questions with a verifiable answer in the PDFs (pull ~15-20 per document from real clauses) — 31 entries
+  - [x] **Unanswerable** — questions plausible for an insurance policy but not covered by these specific documents (tests false-positive/hallucination risk) — 12 entries
+  - [x] **Ambiguous / multi-hop / adversarial** — cross-section reasoning, long-tail clause language, near-duplicate-chunk traps — 10 entries
+- [x] Write an `eval/` package with a real test runner (pytest) that loads the golden set and calls the pipeline programmatically — no more manual script + eyeballing (`eval/conftest.py`, `query.run_query()`)
+- [x] Implement retrieval metrics: Recall@k, Precision@k, MRR — did the ground-truth chunk make it into the top-4 context at all (`eval/test_retrieval.py`)
+- [x] Implement citation accuracy: parse `(Page X, Section Y)` tokens out of the generated answer and diff against expected citations (`eval/test_citations.py`)
+- [x] Implement a citation *verification* pass, not just citation *presence* — re-embeds each claim and checks it against the specific cited chunk (`metrics.verify_citations`)
+- [x] Implement an abstention confusion matrix — correctly answered / correctly abstained / hallucinated / wrongly refused, per bucket (`eval/test_abstention.py`)
+- [x] Wire in RAGAS for `context_precision`, `context_recall`, `faithfulness`, `answer_relevance` — with actual populated values, replacing the current unpopulated README table (`eval/ragas_eval.py`, `eval/test_ragas.py`)
+- [x] Implement a consistency test — run each golden question N times (e.g. N=5) and measure answer/citation stability (embedding similarity across runs, citation agreement rate) (`eval/test_consistency.py`)
+- [x] Add tracing via Langfuse or Arize Phoenix so each eval run is inspectable per-query — opt-in Langfuse hook in `query.py` (`_get_tracer`/`run_query`), no-op unless `langfuse` is installed and API keys are set
+- [x] Generate a results report (`eval/report.md` or a small HTML/artifact) with real numbers — this becomes the README metrics table and the resume evidence (`eval/report.py`)
+- [x] Add a retrieval-confidence gate: if the top reranked cross-encoder score is below a tuned threshold, skip the LLM call and return "not available" deterministically instead of relying solely on prompt compliance — then measure how much this improves the abstention confusion matrix (`config.CONFIDENCE_THRESHOLD`, `eval/gate_analysis.py` — finding: doesn't help on this corpus, shipped disabled)
 
-## Phase 2 — Architecture refactor (P0/P1)
+## Phase 2 — Architecture refactor (P0/P1) — mostly done, Docling swap deferred
 
 Stack decisions for this phase (rationale below in "Stack Decisions"):
 swap `pymupdf4llm` → **Docling**, keep **Qdrant**, add a citation-verification
 guardrail, add content-hash chunk IDs, consider **LlamaIndex** for
 orchestration if rebuilding the retrieval layer.
 
-- [ ] Split into a real package: `ingestion/`, `retrieval/`, `inference/`, `eval/`, `api/` — matches what the (now-corrected) README roadmap promises
-- [ ] Replace `pymupdf4llm` with **Docling** for PDF parsing — it preserves table structure as structured objects instead of flattened markdown (directly fixes the table-flattening failure mode on premium/benefit tables), and its `HybridChunker` does structure-aware chunking natively
-- [ ] Replace the sliding-window `RecursiveCharacterTextSplitter` with structure-aware chunking (Docling's `HybridChunker`, or equivalent) — sliding-window chunking currently cuts clauses mid-sentence and separates a clause number from its content, which is the exact top RAG failure mode for legal/policy text that the (corrected) README should name as solved, not just described
-- [ ] Replace the forward-carrying section-tagging regex with structure-derived section labels from the parser — the current heuristic mislabels any page without an explicit header with whatever section came before, which is a structural crack in a system whose entire value proposition is citation accuracy
-- [ ] Add a citation-verification guardrail pass: after generation, re-embed each cited claim and check it against the specific chunk it claims to cite (cosine similarity threshold or a cheap NLI model) — nothing currently stops the model from citing a plausible but wrong `(Page X, Section Y)`, which is "retrieval failure masquerading as grounding"
-- [ ] Generate deterministic chunk IDs from a content hash (e.g. hash of source+page+text) instead of positional integers — this makes re-ingesting unchanged pages a no-op and is what actually enables incremental ingestion, essentially for free
-- [ ] Replace module-level global singletons in `query.py` (client, dense_model, reranker) with dependency-injected objects/classes — needed for unit testing without live services
-- [ ] Add pydantic models for `Chunk`, `RetrievalCandidate`, `QueryResult` instead of raw dicts passed around by string key
-- [ ] Replace `print()` with the standard `logging` module — structured logs with levels (DEBUG for diagnostics, INFO for pipeline steps, ERROR for failures)
-- [ ] Replace bare `except Exception: print(...)` with specific exception types (`QdrantConnectionError`, `LLMInferenceError`, etc.) and proper logging, still degrading gracefully but traceable
-- [ ] Move hardcoded retrieval params (prefetch limit=30, RRF limit=15, top-k context=4, chunk size/overlap) into `config.py` as named, documented, tunable constants — then justify each via Phase 1 eval results, not guesswork
-- [ ] Deduplicate near-identical chunks in the reranked candidate list before taking top-4 (overlap window currently allows near-duplicates to occupy multiple context slots)
-- [ ] (Optional, bigger lift) Evaluate migrating orchestration to **LlamaIndex** if the retrieval layer is being substantially rebuilt anyway — see rationale below; not required if the hand-rolled Qdrant pipeline stays as-is, since it already works and rewriting working retrieval logic just to use a framework is not automatically a win
+- [x] Split into a real package: `ingestion/`, `retrieval/`, `inference/`, `eval/`, `api/` — matches what the (now-corrected) README roadmap promises. `api/` is an empty placeholder (Phase 4 populates it); `query.py`/`ingest.py` kept as thin entry points so `eval/`'s existing imports (`from query import run_query, dense_model, ABSTENTION_MESSAGE`) didn't need to change
+- [ ] Replace `pymupdf4llm` with **Docling** for PDF parsing — it preserves table structure as structured objects instead of flattened markdown (directly fixes the table-flattening failure mode on premium/benefit tables), and its `HybridChunker` does structure-aware chunking natively. **Deliberately deferred**: a heavy new dependency requiring a full re-ingest + quality comparison against the eval suite, not bundled into the rest of this pass
+- [ ] Replace the sliding-window `RecursiveCharacterTextSplitter` with structure-aware chunking (Docling's `HybridChunker`, or equivalent) — blocked on the Docling migration above
+- [ ] Replace the forward-carrying section-tagging regex with structure-derived section labels from the parser — blocked on the Docling migration above
+- [x] Add a citation-verification guardrail pass: after generation, re-embed each cited claim and check it against the specific chunk it claims to cite — implemented in `inference/guardrail.py` (moved verbatim from `eval/metrics.py`, which now imports from there so eval-time scoring and the runtime guardrail can't drift apart), wired into `query.run_query()`, logs a warning on any unverified citation (advisory only — see README's Known Limitations for why it doesn't block)
+- [x] Generate deterministic chunk IDs from a content hash instead of positional integers — `ingestion/parsing.py`'s `content_hash_id()` = `uuid5(NAMESPACE, f"{source}|{page}|{text}")`, live-verified via a full re-ingest (254 chunks, same count as before)
+- [x] Replace module-level global singletons in `query.py` (client, dense_model, reranker) with dependency-injected objects/classes — `retrieval.dependencies.PipelineDependencies`, `run_query()` accepts an optional `deps=` override; module-level `client`/`dense_model`/`reranker` kept as aliases for backward compatibility
+- [x] Add pydantic models for `Chunk`, `RetrievalCandidate`, `QueryResult` instead of raw dicts passed around by string key — `models.py`; `run_query()`'s external return value stays a plain dict (`.model_dump()` at the boundary) since `eval/` and `test.py` depend on that shape
+- [x] Replace `print()` with the standard `logging` module — `logging_config.py` + `logging.getLogger(__name__)` in `ingestion/`/`retrieval/`/`inference/`; live-verified during re-ingest (timestamped INFO logs)
+- [x] Replace bare `except Exception: print(...)` with specific exception types (`QdrantConnectionError`, `LLMInferenceError`) — `exceptions.py`, raised in `retrieval/search.py` and `inference/llm.py`, caught and logged (`logger.exception`) in `query.run_query()`
+- [x] Move hardcoded retrieval params (prefetch limit=30, RRF limit=15, top-k context=4, chunk size/overlap) into `config.py` as named, documented, tunable constants — `PREFETCH_LIMIT`, `RRF_LIMIT`, `TOP_K_CONTEXT`, `CHUNK_SIZE`, `CHUNK_OVERLAP`, plus a new `DEDUP_SIMILARITY_THRESHOLD`
+- [x] Deduplicate near-identical chunks in the reranked candidate list before taking top-4 — `retrieval.search.deduplicate()`, deliberately scoped to same-`(source, page)` candidate pairs only (a blind text-similarity dedup would collapse the golden set's deliberate cross-endorsement near-duplicate traps — see ambig-02/ambig-03 in `golden_set.jsonl`). Live-verified: retrieval Recall@4/Precision@4/MRR unchanged (88.8%/33.1%/0.840) after re-ingest + rerun
+- [ ] (Optional, bigger lift) Evaluate migrating orchestration to **LlamaIndex** if the retrieval layer is being substantially rebuilt anyway — **not pursued**: the hand-rolled Qdrant pipeline wasn't substantially rebuilt here (same RRF/rerank flow, just reorganized into packages), matching the stated condition for skipping this
 
 ## Phase 3 — Reliability & observability (P1)
 
-- [ ] Add latency instrumentation around each pipeline stage (embed, retrieve, rerank, LLM call) and log/report them
+- [x] Add latency instrumentation around each pipeline stage — pulled forward to feed `frontend/`'s trace view: `query.run_query()` now returns real per-stage wall-clock `timings` (`embed_ms`/`hybrid_ms`/`rerank_ms`/`gen_ms`). Not yet aggregated/reported anywhere beyond the live API response (no logging of these numbers, no report)
 - [ ] Add basic token/cost tracking for the cloud LLM calls
 - [ ] Add incremental ingestion support using the content-hash chunk IDs from Phase 2 (upsert changed/added PDFs only) instead of full destructive collection wipe every run; keep the full-rebuild path as an explicit `--force` flag
 - [ ] Add a lightweight collection-versioning scheme (e.g. alias swap) so re-ingest doesn't leave a query-time window with an empty/partial collection
@@ -85,7 +85,7 @@ orchestration if rebuilding the retrieval layer.
 - [ ] Add pre-commit hooks for lint/format
 - [ ] Add docstrings (one style, consistently — Google or NumPy) to all public functions
 - [ ] Add a `Dockerfile`/`docker-compose.yml` covering the app + Qdrant for reproducible setup
-- [ ] Add a real FastAPI service: one `/query` SSE-streaming endpoint, one `/ingest` endpoint gated behind a content-hash check (see Phase 2) so re-ingesting unchanged docs is a no-op — small and real, not a scaffold. This is what makes the "production-grade" framing true rather than aspirational.
+- [x] Add a real FastAPI service — pulled forward out of Phase 4 order to back the `frontend/` integration: `api/main.py`'s `GET /query` streams a single `run_query()` call over SSE (`retrieved` → `generation_start` → `token`* → `done`/`query_error`; see CLAUDE.md), plus `GET /health`. Live-verified end-to-end against the real pipeline and the Vue frontend (CORS, event sequence, citation parsing all confirmed working). `/ingest` gated behind a content-hash check is **not** built — no incremental-ingest logic exists yet (that's Phase 3), so there's nothing for it to gate on yet
 - [ ] Stop committing `qdrant_storage/` binaries to git — it's regenerated destructively on every ingest run, which is a repo-hygiene red flag in a portfolio project; add it to `.gitignore` and document the `docker run` + `python ingest.py` bootstrap instead
 - [ ] Remove the always-on reranking inefficiency: skip reranking when the retrieval-confidence gate (Phase 1) already indicates a clear top match, reranking only when candidates are close — real latency win, not just a correctness fix
 

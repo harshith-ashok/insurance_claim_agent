@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Policy Ledger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0a0c10;
+        --panel: #12151b;
+        --panel-2: #171b22;
+        --border: #242a33;
+        --border-soft: #1b2029;
+        --text: #e8eaed;
+        --dim: #8a9099;
+        --dim-2: #565c66;
+        --accent: #5b8cff;
+        --accent-dim: rgba(91, 140, 255, 0.12);
+        --ok: #37c978;
+        --warn: #e8a33d;
+        --danger: #f0665c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Inter", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        font-size: 13.5px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition-duration: 0.001ms !important;
+          animation-duration: 0.001ms !important;
+        }
+      }
+      h1,
+      h2,
+      h3,
+      .disp {
+        font-family: "Space Grotesk", sans-serif;
+      }
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      /* ===== shell ===== */
+      .shell {
+        display: grid;
+        grid-template-columns: 210px 1fr;
+        min-height: 100vh;
+      }
+      @media (max-width: 780px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          display: none;
+        }
+      }
+
+      /* ===== sidebar ===== */
+      .sidebar {
+        background: var(--panel);
+        border-right: 1px solid var(--border);
+        padding: 20px 14px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 0 6px 22px;
+      }
+      .brand svg {
+        flex-shrink: 0;
+      }
+      .brand .n {
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 600;
+        font-size: 14.5px;
+        letter-spacing: -0.01em;
+      }
+      .brand .s {
+        font-size: 9.5px;
+        color: var(--dim-2);
+        font-family: "JetBrains Mono", monospace;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        display: block;
+        margin-top: 1px;
+      }
+
+      .navgroup {
+        margin-bottom: 18px;
+      }
+      .navlabel {
+        font-size: 9.5px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--dim-2);
+        font-family: "JetBrains Mono", monospace;
+        padding: 0 10px;
+        margin-bottom: 6px;
+      }
+      .navitem {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 10px;
+        font-size: 12.5px;
+        color: var(--dim);
+        cursor: default;
+        border-left: 2px solid transparent;
+      }
+      .navitem svg {
+        opacity: 0.7;
+        flex-shrink: 0;
+      }
+      .navitem.active {
+        color: var(--text);
+        background: var(--accent-dim);
+        border-left-color: var(--accent);
+      }
+      .navitem.active svg {
+        opacity: 1;
+        stroke: var(--accent);
+      }
+      .navitem.disabled {
+        opacity: 0.4;
+      }
+
+      .sidebar-foot {
+        margin-top: auto;
+        padding: 10px;
+        font-size: 10.5px;
+        color: var(--dim-2);
+        font-family: "JetBrains Mono", monospace;
+        line-height: 1.6;
+      }
+
+      /* ===== main ===== */
+      .main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 22px;
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .crumb {
+        font-size: 12px;
+        color: var(--dim);
+        font-family: "JetBrains Mono", monospace;
+      }
+      .crumb b {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .pills {
+        display: flex;
+        gap: 8px;
+      }
+      .pill {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 10.5px;
+        font-family: "JetBrains Mono", monospace;
+        padding: 4px 9px;
+        border: 1px solid var(--border);
+        color: var(--dim);
+        background: var(--panel-2);
+      }
+      .pill .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ok);
+      }
+
+      .content {
+        padding: 20px 22px 40px;
+        flex: 1;
+      }
+
+      /* ===== query card ===== */
+      .query-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        padding: 16px 18px;
+        margin-bottom: 18px;
+      }
+      .q-row {
+        display: flex;
+        gap: 8px;
+      }
+      .q-row input {
+        flex: 1;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-family: "Inter", sans-serif;
+        font-size: 14px;
+        padding: 10px 12px;
+        outline: none;
+      }
+      .q-row input::placeholder {
+        color: var(--dim-2);
+      }
+      .q-row input:focus {
+        border-color: var(--accent);
+      }
+      .ask {
+        background: var(--accent);
+        color: #05070c;
+        border: none;
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 600;
+        font-size: 13px;
+        padding: 0 20px;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .ask:hover {
+        opacity: 0.88;
+      }
+      .ask:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .ask:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      .q-meta {
+        display: flex;
+        gap: 16px;
+        margin-top: 11px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .q-meta label {
+        font-size: 10.5px;
+        color: var(--dim);
+        font-family: "JetBrains Mono", monospace;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .q-meta select {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        padding: 3px 6px;
+      }
+      .examples {
+        font-size: 11px;
+        color: var(--dim-2);
+        margin-left: auto;
+      }
+      .examples button {
+        background: none;
+        border: 1px solid var(--border-soft);
+        color: var(--dim);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        padding: 4px 9px;
+        cursor: pointer;
+        margin-left: 6px;
+      }
+      .examples button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      /* ===== results grid ===== */
+      .results {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 960px) {
+        .results {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+      }
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--border);
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .panel-head .meta {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        font-weight: 400;
+        color: var(--dim);
+      }
+      .panel-body {
+        padding: 16px;
+      }
+
+      .answer-text {
+        font-size: 14.5px;
+        line-height: 1.65;
+        color: #d7dae0;
+      }
+      .answer-text .status {
+        font-style: italic;
+        color: var(--dim);
+        font-size: 13px;
+      }
+      .cite {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--accent);
+        background: var(--accent-dim);
+        padding: 1px 6px;
+        margin: 0 2px;
+        cursor: pointer;
+        white-space: nowrap;
+        border: 1px solid transparent;
+      }
+      .cite.bad {
+        color: var(--danger);
+        background: rgba(240, 102, 92, 0.1);
+      }
+      .cite:hover {
+        border-color: currentColor;
+      }
+      .abstain {
+        margin-top: 12px;
+        padding: 9px 12px;
+        border-left: 2px solid var(--danger);
+        background: rgba(240, 102, 92, 0.07);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11.5px;
+        color: var(--danger);
+      }
+
+      /* trace waterfall — signature element */
+      .trace {
+        margin-bottom: 14px;
+      }
+      .trace-bar {
+        display: flex;
+        height: 22px;
+        width: 100%;
+        overflow: hidden;
+        background: var(--panel-2);
+        border: 1px solid var(--border-soft);
+      }
+      .trace-seg {
+        height: 100%;
+        transition: width 0.5s ease;
+        position: relative;
+      }
+      .trace-seg.embed {
+        background: #3e5ca3;
+      }
+      .trace-seg.hybrid {
+        background: #5b8cff;
+      }
+      .trace-seg.rerank {
+        background: #8c6fe0;
+      }
+      .trace-seg.gen {
+        background: #37c978;
+      }
+      .trace-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 8px;
+        font-size: 10px;
+        font-family: "JetBrains Mono", monospace;
+        color: var(--dim);
+      }
+      .trace-legend span {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .trace-legend i {
+        width: 8px;
+        height: 8px;
+        display: inline-block;
+      }
+
+      /* chunk list */
+      .chunk {
+        border-bottom: 1px solid var(--border-soft);
+        padding: 10px 0;
+      }
+      .chunk:last-child {
+        border-bottom: none;
+      }
+      .chunk-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .chunk-src {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--dim);
+      }
+      .chunk-src b {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .chunk-score {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--dim);
+      }
+      .bar {
+        height: 3px;
+        background: var(--border-soft);
+        margin: 6px 0;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        background: var(--accent);
+        width: 0;
+        transition: width 0.5s ease 0.15s;
+      }
+      .chunk-text {
+        font-size: 12px;
+        color: #aeb3bc;
+        line-height: 1.5;
+      }
+      .status-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 5px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+      }
+      .status-row .d {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+      }
+      .status-row.ok .d {
+        background: var(--ok);
+      }
+      .status-row.ok {
+        color: var(--ok);
+      }
+      .status-row.bad .d {
+        background: var(--danger);
+      }
+      .status-row.bad {
+        color: var(--danger);
+      }
+      .chunk.hit {
+        background: rgba(91, 140, 255, 0.06);
+        margin: 0 -16px;
+        padding: 10px 16px;
+      }
+
+      /* diagnostics footer */
+      .diag {
+        margin-top: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        border: 1px solid var(--border);
+        background: var(--panel);
+      }
+      .diag-item {
+        padding: 11px 16px;
+        border-right: 1px solid var(--border-soft);
+        flex: 1;
+        min-width: 130px;
+      }
+      .diag-item:last-child {
+        border-right: none;
+      }
+      .diag-item .k {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--dim-2);
+      }
+      .diag-item .v {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+        margin-top: 3px;
+      }
+      .diag-item .v.warn {
+        color: var(--warn);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <rect
+              x="2"
+              y="2"
+              width="20"
+              height="20"
+              stroke="#5B8CFF"
+              stroke-width="1.6"
+            />
+            <path
+              d="M7 8h10M7 12h10M7 16h6"
+              stroke="#5B8CFF"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+          <div>
+            <div class="n">Policy Ledger</div>
+            <span class="s">insurance-rag</span>
+          </div>
+        </div>
+        <div class="navgroup">
+          <div class="navlabel">Pipeline</div>
+          <div class="navitem active">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <circle
+                cx="11"
+                cy="11"
+                r="7"
+                stroke="currentColor"
+                stroke-width="1.8"
+              />
+              <path
+                d="M20 20l-4-4"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+            Query
+          </div>
+          <div class="navitem disabled" title="Not wired in this demo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 7h16M4 12h16M4 17h10"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+            Ingestion
+          </div>
+          <div class="navitem disabled" title="Not wired in this demo">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 19V5M4 19h16M8 15l3-4 3 3 4-6"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Evaluation
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          collection<br /><b style="color: #8a9099">insurance_policies</b
+          ><br /><br />
+          sources<br /><b style="color: #8a9099"
+            >icici-car.pdf<br />icici-life.pdf</b
+          >
+        </div>
+      </aside>
+
+      <div class="main">
+        <div class="topbar">
+          <div class="crumb">policy-ledger / <b>query</b></div>
+          <div class="pills">
+            <div class="pill"><span class="dot"></span>qdrant</div>
+            <div class="pill"><span class="dot"></span>ollama</div>
+          </div>
+        </div>
+
+        <div class="content">
+          <div class="query-card">
+            <div class="q-row">
+              <input
+                id="q"
+                type="text"
+                placeholder="What is the grace period for premium payment?"
+                autocomplete="off"
+              />
+              <button class="ask" id="askBtn">Ask</button>
+            </div>
+            <div class="q-meta">
+              <label
+                >Source
+                <select id="srcFilter">
+                  <option value="any">any</option>
+                  <option value="icici-car.pdf">icici-car.pdf</option>
+                  <option value="icici-life.pdf">icici-life.pdf</option>
+                </select>
+              </label>
+              <label
+                >Section
+                <select id="secFilter">
+                  <option value="any">any</option>
+                  <option value="2.1">2.1</option>
+                  <option value="4.3">4.3</option>
+                  <option value="7.0">7.0</option>
+                </select>
+              </label>
+              <div class="examples">
+                try <button data-mode="answer">grace period</button
+                ><button data-mode="abstain">garage flood</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="results">
+            <div class="panel">
+              <div class="panel-head">
+                <span>Answer</span><span class="meta" id="answerMeta"></span>
+              </div>
+              <div class="panel-body">
+                <div class="answer-text" id="answerBody">
+                  <span class="status"
+                    >Run a query — answers are generated only from retrieved
+                    policy text, with inline citations you can click to trace
+                    back to the source chunk.</span
+                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <span>Retrieval trace</span
+                ><span class="meta" id="chunkMeta">top 4 of 15</span>
+              </div>
+              <div class="panel-body">
+                <div class="trace" id="traceWrap" style="display: none">
+                  <div class="trace-bar" id="traceBar"></div>
+                  <div class="trace-legend">
+                    <span><i style="background: #3e5ca3"></i>embed</span>
+                    <span><i style="background: #5b8cff"></i>hybrid+rrf</span>
+                    <span><i style="background: #8c6fe0"></i>rerank</span>
+                    <span
+                      ><i style="background: #37c978"></i>generate (first
+                      token)</span
+                    >
+                  </div>
+                </div>
+                <div id="chunkList">
+                  <span
+                    class="status-row"
+                    style="color: var(--dim); font-style: italic"
+                    >No query run yet.</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="diag" id="diagStrip">
+            <div class="diag-item">
+              <span class="k">Confidence gate</span>
+              <div class="v warn">disabled</div>
+            </div>
+            <div class="diag-item">
+              <span class="k">Faithfulness (RAGAS)</span>
+              <div class="v">0.825</div>
+            </div>
+            <div class="diag-item">
+              <span class="k">Recall@4</span>
+              <div class="v">88.8%</div>
+            </div>
+            <div class="diag-item">
+              <span class="k">Citation verify</span>
+              <div class="v">86.8%</div>
+            </div>
+            <div class="diag-item">
+              <span class="k">Golden set</span>
+              <div class="v" style="font-size: 12px">53q · 1 hallucination</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const qInput = document.getElementById("q");
+        const askBtn = document.getElementById("askBtn");
+        const answerBody = document.getElementById("answerBody");
+        const answerMeta = document.getElementById("answerMeta");
+        const chunkList = document.getElementById("chunkList");
+        const chunkMeta = document.getElementById("chunkMeta");
+        const traceWrap = document.getElementById("traceWrap");
+        const traceBar = document.getElementById("traceBar");
+
+        const SCENARIOS = {
+          answer: {
+            query: "What is the grace period for premium payment?",
+            chunks: [
+              {
+                src: "icici-life.pdf",
+                page: 12,
+                section: "4.3",
+                score: 0.91,
+                verified: true,
+                text: "A grace period of thirty days is allowed for payment of yearly, half-yearly or quarterly premiums.",
+              },
+              {
+                src: "icici-life.pdf",
+                page: 12,
+                section: "4.3",
+                score: 0.84,
+                verified: true,
+                text: "During the grace period the policy is considered in force, and covered risk continues.",
+              },
+              {
+                src: "icici-life.pdf",
+                page: 13,
+                section: "4.4",
+                score: 0.61,
+                verified: true,
+                text: "If premium is not paid before the grace period expires, the policy lapses and Section 5 applies.",
+              },
+              {
+                src: "icici-car.pdf",
+                page: 4,
+                section: "2.1",
+                score: 0.29,
+                verified: false,
+                text: "Premium once paid shall not be refunded except under the free-look cancellation clause.",
+              },
+            ],
+            answerParts: [
+              {
+                text: "A grace period of thirty days is provided for payment of yearly, half-yearly, or quarterly premiums ",
+              },
+              { ref: 0 },
+              {
+                text: ". During this window the policy remains in force and continues to cover the insured risk ",
+              },
+              { ref: 1 },
+              {
+                text: ". If the premium is still unpaid once the grace period ends, the policy lapses and paid-up value rules under Section 5 take over ",
+              },
+              { ref: 2 },
+              { text: "." },
+            ],
+            trace: { embed: 78, hybrid: 114, rerank: 287, gen: 800 },
+          },
+          abstain: {
+            query: "Does this cover flood damage to the garage?",
+            chunks: [
+              {
+                src: "icici-car.pdf",
+                page: 6,
+                section: "3.2",
+                score: 0.44,
+                verified: false,
+                text: "Own-damage cover includes loss caused by fire, explosion, self-ignition or lightning.",
+              },
+              {
+                src: "icici-car.pdf",
+                page: 7,
+                section: "3.3",
+                score: 0.38,
+                verified: false,
+                text: "Flood, typhoon, storm and inundation are covered perils under Section 3, subject to schedule.",
+              },
+              {
+                src: "icici-car.pdf",
+                page: 2,
+                section: "1.0",
+                score: 0.22,
+                verified: false,
+                text: "This policy covers the vehicle described in the schedule and does not extend to any structure.",
+              },
+              {
+                src: "icici-life.pdf",
+                page: 1,
+                section: "1.0",
+                score: 0.11,
+                verified: false,
+                text: "This is a life insurance policy providing benefits on death or maturity per schedule.",
+              },
+            ],
+            answerParts: [
+              {
+                text: "This information is not available in the provided policy documents. Retrieved clauses describe flood cover for the vehicle itself, but none reference a garage or attached structure.",
+              },
+            ],
+            abstain: true,
+            trace: { embed: 81, hybrid: 119, rerank: 298, gen: 210 },
+          },
+        };
+
+        function esc(s) {
+          return s
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        }
+
+        function renderTrace(t) {
+          const total = t.embed + t.hybrid + t.rerank + t.gen;
+          traceBar.innerHTML = `
+      <div class="trace-seg embed" style="width:0%" data-w="${(t.embed / total) * 100}" title="embed ${t.embed}ms"></div>
+      <div class="trace-seg hybrid" style="width:0%" data-w="${(t.hybrid / total) * 100}" title="hybrid+rrf ${t.hybrid}ms"></div>
+      <div class="trace-seg rerank" style="width:0%" data-w="${(t.rerank / total) * 100}" title="rerank ${t.rerank}ms"></div>
+      <div class="trace-seg gen" style="width:0%" data-w="${(t.gen / total) * 100}" title="generate ${t.gen}ms"></div>
+    `;
+          traceWrap.style.display = "block";
+          requestAnimationFrame(() => {
+            traceBar.querySelectorAll(".trace-seg").forEach((seg) => {
+              seg.style.width = seg.dataset.w + "%";
+            });
+          });
+        }
+
+        function renderChunks(chunks) {
+          chunkList.innerHTML = "";
+          chunks.forEach((c, i) => {
+            const div = document.createElement("div");
+            div.className = "chunk";
+            div.id = "chunk-" + i;
+            div.innerHTML = `
+        <div class="chunk-top">
+          <span class="chunk-src"><b>${c.src}</b> · p.${c.page} · §${c.section}</span>
+          <span class="chunk-score">${c.score.toFixed(2)}</span>
+        </div>
+        <div class="bar"><i style="width:0%" data-w="${Math.round(c.score * 100)}"></i></div>
+        <div class="chunk-text">${esc(c.text)}</div>
+        <div class="status-row ${c.verified ? "ok" : "bad"}"><span class="d"></span>${c.verified ? "verified" : "unverified"}</div>
+      `;
+            chunkList.appendChild(div);
+          });
+          requestAnimationFrame(() => {
+            chunkList.querySelectorAll(".bar i").forEach((b) => {
+              b.style.width = b.dataset.w + "%";
+            });
+          });
+        }
+
+        function renderAnswer(scenario) {
+          answerBody.innerHTML = "";
+          scenario.answerParts.forEach((part) => {
+            if (part.text !== undefined) {
+              answerBody.appendChild(document.createTextNode(part.text));
+            } else {
+              const c = scenario.chunks[part.ref];
+              const span = document.createElement("span");
+              span.className = "cite" + (c.verified ? "" : " bad");
+              span.textContent = `p.${c.page} §${c.section}`;
+              span.addEventListener("click", () => {
+                document
+                  .querySelectorAll(".chunk")
+                  .forEach((el) => el.classList.remove("hit"));
+                const el = document.getElementById("chunk-" + part.ref);
+                if (el) {
+                  el.classList.add("hit");
+                  el.scrollIntoView({ block: "nearest" });
+                }
+              });
+              answerBody.appendChild(span);
+            }
+          });
+          if (scenario.abstain) {
+            const note = document.createElement("div");
+            note.className = "abstain";
+            note.textContent =
+              "ABSTAINED — no retrieved chunk cleared the relevance bar for this query.";
+            answerBody.appendChild(note);
+          }
+        }
+
+        function runQuery(scenarioKey, queryText) {
+          const scenario = SCENARIOS[scenarioKey];
+          qInput.value = queryText || scenario.query;
+          askBtn.disabled = true;
+          answerMeta.textContent = "";
+          chunkMeta.textContent = "searching…";
+          traceWrap.style.display = "none";
+          answerBody.innerHTML =
+            '<span class="status">Embedding query, running hybrid retrieval + RRF fusion…</span>';
+          chunkList.innerHTML = "";
+
+          setTimeout(() => {
+            chunkMeta.textContent = "reranking 15 candidates…";
+          }, 400);
+
+          setTimeout(() => {
+            renderTrace(scenario.trace);
+            renderChunks(scenario.chunks);
+            chunkMeta.textContent = "top 4 of 15";
+            answerMeta.textContent = scenario.abstain
+              ? "abstained"
+              : "gpt-oss:120b-cloud";
+            renderAnswer(scenario);
+            askBtn.disabled = false;
+          }, 900);
+        }
+
+        askBtn.addEventListener("click", () => {
+          const text = qInput.value.trim().toLowerCase();
+          if (!text) return;
+          const key =
+            text.includes("flood") || text.includes("garage")
+              ? "abstain"
+              : "answer";
+          runQuery(key, qInput.value.trim());
+        });
+
+        qInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") askBtn.click();
+        });
+
+        document.querySelectorAll(".examples button").forEach((b) => {
+          b.addEventListener("click", () => runQuery(b.dataset.mode));
+        });
+      })();
+    </script>
+  </body>
+</html>

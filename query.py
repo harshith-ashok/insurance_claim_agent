@@ -1,49 +1,25 @@
+import logging
 import os
+import time
 
-import ollama
-from qdrant_client import QdrantClient, models
-from sentence_transformers import CrossEncoder, SentenceTransformer
+from config import COLLECTION_NAME, CONFIDENCE_THRESHOLD, TOP_K_CONTEXT
+from exceptions import LLMInferenceError, QdrantConnectionError
+from inference.guardrail import verify_citations
+from inference.llm import ABSTENTION_MESSAGE, generate
+from retrieval.dependencies import PipelineDependencies
+from retrieval.search import build_filter, deduplicate, hybrid_search, rerank
 
-from config import (
-    COLLECTION_NAME,
-    CONFIDENCE_THRESHOLD,
-    DENSE_MODEL_NAME,
-    LLM_MODEL_NAME,
-    QDRANT_URL,
-    RERANKER_MODEL_NAME,
-)
+logger = logging.getLogger(__name__)
 
-client = QdrantClient(url=QDRANT_URL)
-dense_model = SentenceTransformer(DENSE_MODEL_NAME)
-reranker = CrossEncoder(RERANKER_MODEL_NAME)
+_default_deps = PipelineDependencies.build()
 
-ABSTENTION_MESSAGE = "This information is not available in the provided policy documents."
-
-SYSTEM_PROMPT = (
-    "You are an insurance system auditor. Provide highly precise answers derived ONLY from the provided text context.\n"
-    "Rules:\n"
-    "1. Every single assertion must include an inline location token explicitly showing page numbers and sections, matching this exact format: (Page X, Section Y).\n"
-    f"2. If the context does not explicitly contain the details needed to form a direct answer, state exactly: "
-    f"'{ABSTENTION_MESSAGE}' Do not extrapolate.\n"
-    "3. Explicitly enumerate all benefits, requirements, or exclusions mentioned in the context without truncation."
-)
-
-
-def _build_filter(target_section: str = None, target_source: str = None):
-    conditions = []
-    if target_section:
-        conditions.append(
-            models.FieldCondition(
-                key="metadata.section", match=models.MatchValue(value=str(target_section))
-            )
-        )
-    if target_source:
-        conditions.append(
-            models.FieldCondition(
-                key="metadata.source", match=models.MatchValue(value=str(target_source))
-            )
-        )
-    return models.Filter(must=conditions) if conditions else None
+# Backward-compatible module-level aliases — eval/ imports these names
+# directly (`from query import dense_model`). The DI refactor (Phase 2) moved
+# the actual client construction into PipelineDependencies, but existing
+# import sites keep working unchanged.
+client = _default_deps.client
+dense_model = _default_deps.dense_model
+reranker = _default_deps.reranker
 
 
 def _get_tracer():
@@ -57,30 +33,38 @@ def _get_tracer():
 
         return Langfuse()
     except Exception:
+        logger.debug("Langfuse import/init failed; tracing disabled", exc_info=True)
         return None
 
 
 def run_query(
     query: str,
-    target_section: str = None,
-    target_source: str = None,
-    top_k: int = 4,
+    target_section: str | None = None,
+    target_source: str | None = None,
+    top_k: int = TOP_K_CONTEXT,
     confidence_threshold: float | None = CONFIDENCE_THRESHOLD,
+    deps: PipelineDependencies | None = None,
     on_retrieved=None,
     on_generation_start=None,
     on_token=None,
 ):
-    """Programmatic pipeline entry point: retrieve, rerank, optionally gate, generate.
+    """Programmatic pipeline entry point: retrieve, rerank, dedup, optionally
+    gate, generate, verify citations.
 
     Returns a result dict instead of printing, so it can be called from the eval
     suite. `diagnostic_pipeline` below is a thin printing/streaming wrapper around
     this for interactive/manual use (test.py).
 
-    `on_retrieved(result)` fires once reranked candidates are available (before any
-    gate/generation decision), `on_generation_start()` fires only if the LLM call is
-    about to happen, and `on_token(str)` fires per streamed token during generation.
-    All three are optional and unused by eval callers.
+    `deps` lets a caller inject an alternate PipelineDependencies (different
+    Qdrant URL, different models); defaults to the module-level singleton built
+    at import time. `on_retrieved(result)` fires once reranked candidates are
+    available (before any gate/generation decision), `on_generation_start()`
+    fires only if the LLM call is about to happen, and `on_token(str)` fires
+    per streamed token during generation. All three are optional and unused by
+    eval callers.
     """
+    deps = deps or _default_deps
+
     result = {
         "query": query,
         "target_section": target_section,
@@ -91,6 +75,11 @@ def run_query(
         "top_score": None,
         "gated": False,
         "answer": None,
+        "citation_verifications": [],
+        # Real per-stage wall-clock timings (ms), not simulated — populated as
+        # each stage completes; a stage that never runs (e.g. gen_ms when
+        # gated) stays 0. Consumed by api/ to drive the frontend trace view.
+        "timings": {"embed_ms": 0.0, "hybrid_ms": 0.0, "rerank_ms": 0.0, "gen_ms": 0.0},
     }
 
     tracer = _get_tracer()
@@ -103,57 +92,38 @@ def run_query(
         else None
     )
 
-    if not client.collection_exists(COLLECTION_NAME):
+    if not deps.client.collection_exists(COLLECTION_NAME):
         result["error"] = f"Collection '{COLLECTION_NAME}' does not exist. Run ingest.py first."
         return result
 
-    query_dense = dense_model.encode(query).tolist()
-    query_filter = _build_filter(target_section, target_source)
+    t0 = time.perf_counter()
+    query_dense = deps.dense_model.encode(query).tolist()
+    result["timings"]["embed_ms"] = (time.perf_counter() - t0) * 1000
 
+    query_filter = build_filter(target_section, target_source)
+
+    t1 = time.perf_counter()
     try:
-        retrieval_response = client.query_points(
-            collection_name=COLLECTION_NAME,
-            prefetch=[
-                models.Prefetch(query=query_dense, using="dense", limit=30),
-                models.Prefetch(
-                    query=models.Document(text=query, model="Qdrant/bm25"),
-                    using="sparse",
-                    limit=30,
-                ),
-            ],
-            query=models.RrfQuery(rrf=models.Rrf()),
-            query_filter=query_filter,
-            limit=15,
-        )
-    except Exception as exc:
-        result["error"] = f"Qdrant query failed: {exc}"
+        candidates = hybrid_search(deps.client, COLLECTION_NAME, query, query_dense, query_filter)
+    except QdrantConnectionError as exc:
+        logger.exception("Retrieval failed for query %r", query)
+        result["error"] = str(exc)
         return result
-
-    seen_chunks = set()
-    candidates = []
-    for point in retrieval_response.points:
-        cid = point.payload["metadata"]["chunk_id"]
-        if cid in seen_chunks:
-            continue
-        seen_chunks.add(cid)
-        candidates.append(
-            {"text": point.payload["text"], "rrf_score": point.score, "meta": point.payload["metadata"]}
-        )
+    result["timings"]["hybrid_ms"] = (time.perf_counter() - t1) * 1000
 
     if not candidates:
         result["gated"] = True
         result["answer"] = ABSTENTION_MESSAGE
         return result
 
-    pairs = [[query, c["text"]] for c in candidates]
-    rerank_scores = reranker.predict(pairs)
-    for candidate, score in zip(candidates, rerank_scores):
-        candidate["cross_score"] = float(score)
+    t2 = time.perf_counter()
+    sorted_candidates = rerank(deps.reranker, query, candidates)
+    sorted_candidates = deduplicate(sorted_candidates)
+    result["timings"]["rerank_ms"] = (time.perf_counter() - t2) * 1000
 
-    sorted_candidates = sorted(candidates, key=lambda x: x["cross_score"], reverse=True)
-    result["candidates"] = sorted_candidates
-    result["top_score"] = sorted_candidates[0]["cross_score"]
-    result["context_candidates"] = sorted_candidates[:top_k]
+    result["candidates"] = [c.model_dump() for c in sorted_candidates]
+    result["top_score"] = sorted_candidates[0].cross_score
+    result["context_candidates"] = [c.model_dump() for c in sorted_candidates[:top_k]]
 
     if on_retrieved:
         on_retrieved(result)
@@ -173,32 +143,32 @@ def run_query(
         for c in result["context_candidates"]
     )
 
+    t3 = time.perf_counter()
     try:
-        stream = ollama.chat(
-            model=LLM_MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Context:\n{context_str}\n\nQuery: {query}"},
-            ],
-            stream=True,
-        )
-        tokens = []
-        for chunk in stream:
-            token = chunk["message"]["content"]
-            tokens.append(token)
-            if on_token:
-                on_token(token)
-        result["answer"] = "".join(tokens)
-    except Exception as exc:
-        result["error"] = f"LLM inference failed: {exc}"
+        result["answer"] = generate(query, context_str, on_token=on_token)
+    except LLMInferenceError as exc:
+        result["error"] = str(exc)
         return result
+    result["timings"]["gen_ms"] = (time.perf_counter() - t3) * 1000
+
+    result["citation_verifications"] = verify_citations(
+        result["answer"], result["context_candidates"], deps.dense_model
+    )
+    unverified = [v for v in result["citation_verifications"] if not v["verified"]]
+    if unverified:
+        logger.warning(
+            "%d/%d citations failed verification for query %r",
+            len(unverified),
+            len(result["citation_verifications"]),
+            query,
+        )
 
     if trace:
         trace.update(output={"answer": result["answer"], "gated": False, "top_score": result["top_score"]})
     return result
 
 
-def diagnostic_pipeline(query: str, target_section: str = None, target_source: str = None):
+def diagnostic_pipeline(query: str, target_section: str | None = None, target_source: str | None = None):
     def _print_diagnostics(res):
         print("\n" + "=" * 80)
         print(f" RETRIEVAL DIAGNOSTICS FOR QUERY: '{query}'")
@@ -244,5 +214,11 @@ def diagnostic_pipeline(query: str, target_section: str = None, target_source: s
         print(result["answer"])
         print("\n\n" + "=" * 80 + "\n")
         return
+
+    unverified = [v for v in result["citation_verifications"] if not v["verified"]]
+    if unverified:
+        print(f"\n[GUARDRAIL] {len(unverified)} citation(s) failed verification:")
+        for v in unverified:
+            print(f"       (Page {v['citation']['page']}, Section {v['citation']['section']}) — {v.get('reason', 'similarity below threshold')}")
 
     print("\n\n" + "=" * 80 + "\n")
