@@ -35,9 +35,7 @@ def run():
     with open(os.path.join(RESULTS_DIR, "pipeline_results.json")) as f:
         pipeline_results = json.load(f)
 
-    rows = [
-        {"threshold": t, **simulate(t, golden_by_id, pipeline_results)} for t in CANDIDATE_THRESHOLDS
-    ]
+    rows = [{"threshold": t, **simulate(t, golden_by_id, pipeline_results)} for t in CANDIDATE_THRESHOLDS]
     with open(os.path.join(RESULTS_DIR, "gate_analysis.json"), "w") as f:
         json.dump(rows, f, indent=1)
     return rows

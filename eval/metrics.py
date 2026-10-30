@@ -25,7 +25,7 @@ def _matches_ground_truth(candidate_meta: dict, expected_citation: dict) -> bool
     if candidate_meta.get("source") != expected_citation.get("source"):
         return False
     try:
-        return int(candidate_meta.get("page")) == int(expected_citation.get("page"))
+        return int(candidate_meta.get("page", "")) == int(expected_citation.get("page", ""))
     except (TypeError, ValueError):
         return False
 
@@ -36,9 +36,7 @@ def recall_at_k(ranked_candidates: list[dict], expected_citations: list[dict], k
     if not expected_citations:
         return None
     top_k = ranked_candidates[:k]
-    found = sum(
-        1 for exp in expected_citations if any(_matches_ground_truth(c["meta"], exp) for c in top_k)
-    )
+    found = sum(1 for exp in expected_citations if any(_matches_ground_truth(c["meta"], exp) for c in top_k))
     return found / len(expected_citations)
 
 

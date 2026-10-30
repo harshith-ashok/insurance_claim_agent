@@ -11,9 +11,7 @@ from models import Chunk, ChunkMetadata
 
 logger = logging.getLogger(__name__)
 
-SECTION_REGEX = re.compile(
-    r"(?:Section|Clause|Article|Policy Provision)\s*([A-Za-z0-9\.]+)", re.IGNORECASE
-)
+SECTION_REGEX = re.compile(r"(?:Section|Clause|Article|Policy Provision)\s*([A-Za-z0-9\.]+)", re.IGNORECASE)
 
 # Fixed namespace for content-hash chunk IDs (uuid5) — same (source, page,
 # text) always yields the same point ID, so re-ingesting an unchanged page

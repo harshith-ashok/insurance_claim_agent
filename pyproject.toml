@@ -5,6 +5,8 @@ extend-exclude = ["frontend", "qdrant_storage", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+# Long prompt/f-string lines can't be wrapped by the formatter; leave line length to `ruff format`.
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -14,3 +16,4 @@ exclude = ["frontend/", "qdrant_storage/", ".venv/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

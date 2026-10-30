@@ -8,8 +8,7 @@ def parse_citations(answer_text: str) -> list[dict]:
     if not answer_text:
         return []
     return [
-        {"page": int(m.group(1)), "section": m.group(2).strip()}
-        for m in CITATION_RE.finditer(answer_text)
+        {"page": int(m.group(1)), "section": m.group(2).strip()} for m in CITATION_RE.finditer(answer_text)
     ]
 
 

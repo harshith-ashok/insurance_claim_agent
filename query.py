@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from typing import Any
 
 from config import COLLECTION_NAME, CONFIDENCE_THRESHOLD, TOP_K_CONTEXT
 from exceptions import LLMInferenceError, QdrantConnectionError
@@ -65,7 +66,7 @@ def run_query(
     """
     deps = deps or _default_deps
 
-    result = {
+    result: dict[str, Any] = {
         "query": query,
         "target_section": target_section,
         "target_source": target_source,
@@ -219,6 +220,8 @@ def diagnostic_pipeline(query: str, target_section: str | None = None, target_so
     if unverified:
         print(f"\n[GUARDRAIL] {len(unverified)} citation(s) failed verification:")
         for v in unverified:
-            print(f"       (Page {v['citation']['page']}, Section {v['citation']['section']}) — {v.get('reason', 'similarity below threshold')}")
+            print(
+                f"       (Page {v['citation']['page']}, Section {v['citation']['section']}) — {v.get('reason', 'similarity below threshold')}"
+            )
 
     print("\n\n" + "=" * 80 + "\n")

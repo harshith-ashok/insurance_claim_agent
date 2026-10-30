@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 def recreate_collection(client: QdrantClient, dense_model: SentenceTransformer) -> None:
+    dense_dim = dense_model.get_sentence_embedding_dimension()
+    if dense_dim is None:
+        raise ValueError(f"Could not determine embedding dimension for {DENSE_MODEL_NAME}")
+
     if client.collection_exists(COLLECTION_NAME):
         client.delete_collection(collection_name=COLLECTION_NAME)
 
@@ -20,7 +24,7 @@ def recreate_collection(client: QdrantClient, dense_model: SentenceTransformer) 
         collection_name=COLLECTION_NAME,
         vectors_config={
             "dense": models.VectorParams(
-                size=dense_model.get_sentence_embedding_dimension(),
+                size=dense_dim,
                 distance=models.Distance.COSINE,
             )
         },
@@ -32,9 +36,7 @@ def recreate_collection(client: QdrantClient, dense_model: SentenceTransformer) 
         ("metadata.page", models.PayloadSchemaType.INTEGER),
         ("metadata.source", models.PayloadSchemaType.KEYWORD),
     ]:
-        client.create_payload_index(
-            collection_name=COLLECTION_NAME, field_name=field, field_schema=schema
-        )
+        client.create_payload_index(collection_name=COLLECTION_NAME, field_name=field, field_schema=schema)
 
 
 def ingest(docs_dir: str = DOCS_DIR) -> None:
@@ -62,7 +64,7 @@ def ingest(docs_dir: str = DOCS_DIR) -> None:
     payloads = [{"text": c.text, "metadata": c.metadata.model_dump()} for c in all_chunks]
     vectors = [
         {"dense": dense_vec, "sparse": models.Document(text=text, model="Qdrant/bm25")}
-        for dense_vec, text in zip(dense_vectors, texts)
+        for dense_vec, text in zip(dense_vectors, texts, strict=True)
     ]
 
     logger.info("Uploading %d chunks to '%s'...", len(all_chunks), COLLECTION_NAME)

@@ -16,9 +16,7 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def stream_query(
-    query: str, target_section: str | None, target_source: str | None
-) -> Iterator[str]:
+def stream_query(query: str, target_section: str | None, target_source: str | None) -> Iterator[str]:
     """Runs run_query() on a background thread and yields SSE frames as its
     existing on_retrieved/on_generation_start/on_token callbacks fire, so the
     frontend gets retrieved chunks and streamed tokens progressively instead

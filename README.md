@@ -142,6 +142,7 @@ no assertions. To ask a single question interactively:
 
 ```python
 from query import diagnostic_pipeline
+
 diagnostic_pipeline(query="What are the key benefits of the policy?", target_source="icici-car.pdf")
 ```
 

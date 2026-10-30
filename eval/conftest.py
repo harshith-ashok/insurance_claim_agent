@@ -57,7 +57,9 @@ def _require_live_services():
     client = QdrantClient(url=QDRANT_URL)
     try:
         if not client.collection_exists(COLLECTION_NAME):
-            pytest.skip(f"Qdrant collection '{COLLECTION_NAME}' does not exist — run `python ingest.py` first.")
+            pytest.skip(
+                f"Qdrant collection '{COLLECTION_NAME}' does not exist — run `python ingest.py` first."
+            )
     except Exception as exc:
         pytest.skip(f"Qdrant is not reachable at {QDRANT_URL}: {exc}")
 

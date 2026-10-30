@@ -11,21 +11,15 @@ from models import ChunkMetadata, RetrievalCandidate
 logger = logging.getLogger(__name__)
 
 
-def build_filter(
-    target_section: str | None = None, target_source: str | None = None
-) -> models.Filter | None:
-    conditions = []
+def build_filter(target_section: str | None = None, target_source: str | None = None) -> models.Filter | None:
+    conditions: list[models.Condition] = []
     if target_section:
         conditions.append(
-            models.FieldCondition(
-                key="metadata.section", match=models.MatchValue(value=str(target_section))
-            )
+            models.FieldCondition(key="metadata.section", match=models.MatchValue(value=str(target_section)))
         )
     if target_source:
         conditions.append(
-            models.FieldCondition(
-                key="metadata.source", match=models.MatchValue(value=str(target_source))
-            )
+            models.FieldCondition(key="metadata.source", match=models.MatchValue(value=str(target_source)))
         )
     return models.Filter(must=conditions) if conditions else None
 
@@ -60,13 +54,14 @@ def hybrid_search(
     seen_chunks = set()
     candidates = []
     for point in response.points:
-        meta = ChunkMetadata.model_validate(point.payload["metadata"])
+        payload = point.payload
+        if payload is None:
+            continue
+        meta = ChunkMetadata.model_validate(payload["metadata"])
         if meta.chunk_id in seen_chunks:
             continue
         seen_chunks.add(meta.chunk_id)
-        candidates.append(
-            RetrievalCandidate(text=point.payload["text"], rrf_score=point.score, meta=meta)
-        )
+        candidates.append(RetrievalCandidate(text=payload["text"], rrf_score=point.score, meta=meta))
     return candidates
 
 
@@ -78,10 +73,10 @@ def rerank(
     if not candidates:
         return []
     pairs = [[query, c.text] for c in candidates]
-    scores = reranker.predict(pairs)
-    for candidate, score in zip(candidates, scores):
+    scores = reranker.predict(pairs)  # type: ignore[arg-type]  # list-of-lists is accepted at runtime
+    for candidate, score in zip(candidates, scores, strict=True):
         candidate.cross_score = float(score)
-    return sorted(candidates, key=lambda c: c.cross_score, reverse=True)
+    return sorted(candidates, key=lambda c: c.cross_score or 0.0, reverse=True)
 
 
 def deduplicate(

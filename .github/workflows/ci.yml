@@ -9,9 +9,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -21,15 +25,11 @@ jobs:
           cache-dependency-glob: requirements.txt
           python-version: "3.12"
 
-      - name: Cache HuggingFace models
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface
-          key: hf-${{ hashFiles('config.py') }}
-
       - name: Install dependencies
         run: |
           uv venv --clear
+          # CPU-only torch: the default Linux wheel bundles ~2 GB of CUDA libs we never use.
+          uv pip install torch --index-url https://download.pytorch.org/whl/cpu
           uv pip install -r requirements.txt ruff mypy
 
       - name: Ruff lint
@@ -41,5 +41,7 @@ jobs:
       - name: Mypy
         run: uv run mypy ingestion retrieval inference api eval
 
+      # No Qdrant/Ollama/model downloads needed. Add an actions/cache step for
+      # ~/.cache/huggingface once tests start loading the embedding/reranker models.
       - name: Unit tests (no services)
         run: uv run pytest tests -v

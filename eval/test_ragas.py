@@ -36,18 +36,32 @@ def test_ragas_metrics(golden_set, pipeline_results, ragas_n):
             rows.append(row)
             continue
         try:
-            row["faithfulness"] = components["faithfulness"].score(
-                user_input=entry["question"], response=answer, retrieved_contexts=contexts
-            ).value
-            row["answer_relevancy"] = components["answer_relevancy"].score(
-                user_input=entry["question"], response=answer
-            ).value
-            row["context_precision"] = components["context_precision"].score(
-                user_input=entry["question"], reference=entry["expected_answer"], retrieved_contexts=contexts
-            ).value
-            row["context_recall"] = components["context_recall"].score(
-                user_input=entry["question"], retrieved_contexts=contexts, reference=entry["expected_answer"]
-            ).value
+            row["faithfulness"] = (
+                components["faithfulness"]
+                .score(user_input=entry["question"], response=answer, retrieved_contexts=contexts)
+                .value
+            )
+            row["answer_relevancy"] = (
+                components["answer_relevancy"].score(user_input=entry["question"], response=answer).value
+            )
+            row["context_precision"] = (
+                components["context_precision"]
+                .score(
+                    user_input=entry["question"],
+                    reference=entry["expected_answer"],
+                    retrieved_contexts=contexts,
+                )
+                .value
+            )
+            row["context_recall"] = (
+                components["context_recall"]
+                .score(
+                    user_input=entry["question"],
+                    retrieved_contexts=contexts,
+                    reference=entry["expected_answer"],
+                )
+                .value
+            )
         except Exception as exc:
             row["error"] = str(exc)
         rows.append(row)
