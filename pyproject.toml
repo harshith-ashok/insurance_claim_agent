@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["frontend", "qdrant_storage", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = false
+exclude = ["frontend/", "qdrant_storage/", ".venv/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

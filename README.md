@@ -17,23 +17,23 @@ See [Roadmap](#roadmap) for what's still not built.
 
 ## Tech stack
 
-| Layer            | Technology                                                              |
-| ---------------- | ----------------------------------------------------------------------- |
-| Package layout   | `ingestion/`, `retrieval/`, `inference/`, `eval/`, `api/`               |
-| API              | FastAPI, one SSE-streaming `GET /query` endpoint (`/ingest` not built)  |
+| Layer            | Technology                                                                   |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Package layout   | `ingestion/`, `retrieval/`, `inference/`, `eval/`, `api/`                    |
+| API              | FastAPI, one SSE-streaming `GET /query` endpoint (`/ingest` not built)       |
 | Frontend         | Vue 3 + TypeScript + Vite (`frontend/`), consumes `/query` via `EventSource` |
-| Document parsing | `pymupdf4llm` (markdown extraction, per page)                           |
-| Chunking         | `RecursiveCharacterTextSplitter` (LangChain) — sliding window, 1500/300 |
-| Section tagging  | Regex heuristic, forward-carried across a document                      |
-| Chunk IDs        | Content hash (`uuid5(source\|page\|text)`) — deterministic, not positional |
-| Dense embeddings | `BAAI/bge-small-en-v1.5` (sentence-transformers)                        |
-| Sparse vectors   | `Qdrant/bm25`, generated server-side                                    |
-| Vector store     | Qdrant — hybrid dense+sparse, RRF fusion via `RrfQuery`                 |
-| Reranking        | `cross-encoder/ms-marco-MiniLM-L-6-v2`, always on                       |
-| Guardrail        | Runtime citation verification (re-embed claim vs. cited chunk)          |
-| Generation       | `gpt-oss:120b-cloud` via Ollama, streamed                               |
-| Data models      | Pydantic (`models.py`), typed exceptions (`exceptions.py`)              |
-| Evaluation       | pytest, RAGAS, optional Langfuse tracing                                |
+| Document parsing | `pymupdf4llm` (markdown extraction, per page)                                |
+| Chunking         | `RecursiveCharacterTextSplitter` (LangChain) — sliding window, 1500/300      |
+| Section tagging  | Regex heuristic, forward-carried across a document                           |
+| Chunk IDs        | Content hash (`uuid5(source\|page\|text)`) — deterministic, not positional   |
+| Dense embeddings | `BAAI/bge-small-en-v1.5` (sentence-transformers)                             |
+| Sparse vectors   | `Qdrant/bm25`, generated server-side                                         |
+| Vector store     | Qdrant — hybrid dense+sparse, RRF fusion via `RrfQuery`                      |
+| Reranking        | `cross-encoder/ms-marco-MiniLM-L-6-v2`, always on                            |
+| Guardrail        | Runtime citation verification (re-embed claim vs. cited chunk)               |
+| Generation       | `gpt-oss:120b-cloud` via Ollama, streamed                                    |
+| Data models      | Pydantic (`models.py`), typed exceptions (`exceptions.py`)                   |
+| Evaluation       | pytest, RAGAS, optional Langfuse tracing                                     |
 
 ## How it works
 
@@ -207,9 +207,9 @@ numbers go stale otherwise.
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Retrieval Recall@4 / Precision@4 / MRR                                     | 88.8% / 33.1% / 0.840                                                 | Of the ground-truth `(source, page)` chunks, 88.8% make it into the top candidates the reranker sees; only ~1 in 3 of the top-4 context slots is actually the ground-truth chunk (some slack is expected — a page can be relevant without being _the_ labeled ground truth); MRR 0.840 means the right chunk is usually ranked near #1 when it's found at all |
 | Citation accuracy (precision / recall)                                     | 69.4% / 76.2%                                                         | Of the `(Page X, Section Y)` tokens the model outputs, 69.4% match an expected citation; of the citations we expected, 76.2% showed up                                                                                                                                                                                                                        |
-| Citation verification                                                      | 89.5% (68/76)                                                         | Stricter check: re-embeds each cited claim and confirms it's actually supported by the specific chunk on the cited page — catches a plausible-but-wrong citation, not just a malformed one. Runtime guardrail (`inference/guardrail.py`) uses this same function to log a warning on unverified citations, not just the eval suite                          |
+| Citation verification                                                      | 89.5% (68/76)                                                         | Stricter check: re-embeds each cited claim and confirms it's actually supported by the specific chunk on the cited page — catches a plausible-but-wrong citation, not just a malformed one. Runtime guardrail (`inference/guardrail.py`) uses this same function to log a warning on unverified citations, not just the eval suite                            |
 | Abstention confusion matrix (of 53)                                        | 37 correct, 12 correctly abstained, 1 hallucinated, 3 wrongly refused | Did the model answer when it should, and refuse when it shouldn't? 1 hallucination in 53 questions is the main accuracy risk surfaced by this suite                                                                                                                                                                                                           |
-| Consistency (5 questions × 5 runs)                                         | 0.939 mean pairwise similarity, 72.0% citation agreement              | Same question asked repeatedly gives similar but not identical answers/citations — cloud-LLM output drifts run to run more than a single sample suggests; see note below                                                                                                                                                                                     |
+| Consistency (5 questions × 5 runs)                                         | 0.939 mean pairwise similarity, 72.0% citation agreement              | Same question asked repeatedly gives similar but not identical answers/citations — cloud-LLM output drifts run to run more than a single sample suggests; see note below                                                                                                                                                                                      |
 | RAGAS faithfulness / answer_relevancy / context_precision / context_recall | 0.825 / 0.825 / 0.900 / 0.900                                         | Standard RAG quality metrics (n=10 sampled): faithfulness = answer is grounded in context, not invented; context_precision/recall = how clean and complete the retrieved context is                                                                                                                                                                           |
 
 Retrieval metrics are unchanged from before the Phase 2 refactor (byte-identical
@@ -250,7 +250,7 @@ threshold is in `eval/report.md`.
 - **Full destructive reingest** — `ingest.py` deletes and recreates the
   Qdrant collection every run. Chunk IDs are now a content hash
   (`uuid5(source|page|text)`), which makes an unchanged page's re-ingest
-  idempotent at the point level, but the incremental *upsert-only-changed*
+  idempotent at the point level, but the incremental _upsert-only-changed_
   logic itself isn't built yet (Phase 3).
 - **`qdrant_storage/` is checked into git** — regenerated destructively by
   `ingest.py`, so this is repo hygiene debt, not source of truth.
@@ -269,7 +269,7 @@ Condensed from `refactor.md` (full detail and rationale there):
       limitations)
 - [x] Content-hash chunk IDs (`uuid5(source|page|text)`) — re-ingesting an
       unchanged page is now idempotent at the point level; the incremental
-      upsert-only-changed-pages *logic* is still the Phase 3 item below
+      upsert-only-changed-pages _logic_ is still the Phase 3 item below
 - [x] Dependency-injected clients (`retrieval.dependencies.PipelineDependencies`)
       instead of bare module-level singletons; pydantic models
       (`models.py`) instead of raw dicts passed by string key; `logging`
